@@ -24,25 +24,100 @@
   </header>
   <main class="主区">
     <header class="页头">
-      <h1>事件详情</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <h1>投递流水详情 · 事件详情</h1>
+      <p>Webhook 投递控制台 · 尝试卡片、配额轨道与死信同票可核 · 非工单客服</p>
     </header>
 
 <section class="卷">
-  <label>事件号</label><input id="事件号"/>
-  <button class="按钮" type="button" id="查">查询</button>
+  <div class="配额行输入">
+    <label>事件号</label><input id="事件号" placeholder="EVT-..."/>
+    <button class="按钮" type="button" id="查">查询</button>
+  </div>
+  <p class="消息" id="消息"></p>
+</section>
+
+<section class="卷" id="概览卷" hidden>
+  <h3 style="margin-top:0">事件命运</h3>
+  <div id="概览" class="配额条"></div>
+</section>
+
+<section class="卷" id="尝试卷" hidden>
+  <h3 style="margin-top:0">投递流水卡片（含配额内轨道）</h3>
+  <div class="卡列" id="尝试卡列"></div>
+</section>
+
+<section class="卷" id="死信卷" hidden>
+  <h3 style="margin-top:0">死信匣卡片</h3>
+  <div id="死信卡"></div>
+</section>
+
+<section class="卷">
+  <h3 style="margin-top:0">原始同票 JSON</h3>
   <pre id="出" class="说明"></pre>
 </section>
 
   </main>
 
 <script>
-document.getElementById('查').onclick = async () => {
-  try {
-    const id = document.getElementById('事件号').value;
-    document.getElementById('出').textContent = JSON.stringify(await 投递台.getJSON('/api/事件/'+encodeURIComponent(id)), null, 2);
-  } catch (e) { document.getElementById('出').textContent = e.message; }
-};
+function 键卡(k, v) {
+  const c = document.createElement('div'); c.className = 'q卡';
+  c.innerHTML = '<small>' + 投递台.安全文本(k) + '</small><b style="font-size:1rem">' + 投递台.安全文本(v) + '</b>';
+  return c;
+}
+async function 查询(id) {
+  const 消息 = document.getElementById('消息'); 消息.textContent = '';
+  if (!id) { 消息.textContent = '请输入事件号，或从队列/流水点事件号进入。'; return; }
+  document.getElementById('事件号').value = id;
+  let d;
+  try { d = await 投递台.getJSON('/api/事件/' + encodeURIComponent(id)); }
+  catch (e) { 消息.textContent = e.message; return; }
+  document.getElementById('出').textContent = JSON.stringify(d, null, 2);
+
+  document.getElementById('概览卷').hidden = false;
+  const ov = document.getElementById('概览'); ov.innerHTML = '';
+  ov.appendChild(键卡('事件号', d.事件号));
+  ov.appendChild(键卡('事件类型', d.事件类型));
+  ov.appendChild(键卡('端点键', d.端点键));
+  const fate = document.createElement('div'); fate.className = 'q卡';
+  fate.innerHTML = '<small>中文命运</small><b style="font-size:1rem"></b>';
+  fate.querySelector('b').appendChild(投递台.徽章(d.状态));
+  ov.appendChild(fate);
+  ov.appendChild(键卡('优先级', d.优先级));
+  ov.appendChild(键卡('载荷摘要', d.载荷摘要));
+
+  const tries = d.尝试 || [];
+  document.getElementById('尝试卷').hidden = tries.length === 0;
+  const box = document.getElementById('尝试卡列'); box.innerHTML = '';
+  for (const t of tries) {
+    const card = document.createElement('article'); card.className = '事卡';
+    const h = document.createElement('h4');
+    const title = document.createElement('span'); title.textContent = t.尝试号;
+    h.appendChild(title); h.appendChild(投递台.徽章(t.状态));
+    card.appendChild(h);
+    card.innerHTML +=
+      '<p>轨道：' + 投递台.安全文本(t.轨道 || '配额内') + '</p>' +
+      '<p>端点：' + 投递台.安全文本(t.端点键) + ' · 响应码 ' + 投递台.安全文本(t.响应码) + '</p>' +
+      '<p>' + 投递台.安全文本(t.说明 || '') + '</p>' +
+      '<p class="说明">签名 ' + 投递台.安全文本(t.签名摘要) + '<br/>' + 投递台.安全文本(t.投递时) + '</p>';
+    box.appendChild(card);
+  }
+
+  if (d.死信) {
+    document.getElementById('死信卷').hidden = false;
+    const dl = d.死信;
+    document.getElementById('死信卡').innerHTML =
+      '<article class="事卡"><h4>' + 投递台.安全文本(dl.死信号) + '</h4>' +
+      '<p>失败次数 ' + 投递台.安全文本(dl.失败次数) + ' · 状态 ' + 投递台.安全文本(dl.状态) + '</p>' +
+      '<p>末次原因：' + 投递台.安全文本(dl.末次原因) + '</p>' +
+      '<p class="说明">入匣 ' + 投递台.安全文本(dl.入匣时) + '</p></article>';
+  } else {
+    document.getElementById('死信卷').hidden = true;
+  }
+}
+document.getElementById('查').onclick = () => 查询(document.getElementById('事件号').value.trim());
+const 参数 = new URLSearchParams(location.search);
+const 初始 = 参数.get('事件号') || 参数.get('id') || '';
+if (初始) 查询(初始);
 </script>
 
 </body>

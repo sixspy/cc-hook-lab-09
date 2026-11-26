@@ -24,34 +24,75 @@
   </header>
   <main class="主区">
     <header class="页头">
-      <h1>签名规</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <h1>签名规策略列表</h1>
+      <p>Webhook 投递控制台 · 签名/重试/超时与端点日配额全局策略同源 · 非工单客服</p>
     </header>
 
 <section class="卷">
-  <label>键</label><input id="键" placeholder="最大重试"/>
-  <label>值</label><input id="值"/>
-  <p class="消息" id="消息"></p>
-  <button class="按钮" type="button" id="保存">保存签名规</button>
+  <h3 style="margin-top:0">策略中文列表</h3>
+  <div class="表绕"><table>
+    <thead><tr><th>策略键</th><th>中文含义</th><th>当前值</th><th>命运/闸口</th></tr></thead>
+    <tbody id="策略表"></tbody>
+  </table></div>
 </section>
-<section class="卷"><pre id="规" class="说明"></pre></section>
+
+<section class="卷">
+  <h3 style="margin-top:0">保存策略键值</h3>
+  <div class="配额行输入">
+    <label>键</label><input id="键" placeholder="最大重试 或 端点日配额"/>
+    <label>值</label><input id="值"/>
+    <button class="按钮" type="button" id="保存">保存签名规</button>
+  </div>
+  <p class="消息" id="消息"></p>
+</section>
+<section class="卷"><h3 style="margin-top:0">原始签名规 JSON</h3><pre id="规" class="说明"></pre></section>
 
   </main>
 
 <script>
+const 中文含义 = {
+  '最大重试': '投递失败后的最大重试次数，耗尽进死信匣',
+  '产品名': '控制台产品名',
+  '主链': '回调投递主链路',
+  '签名算法': 'Webhook 签名摘要算法',
+  '超时秒': '投递超时闸阈值（秒）',
+  '端点日配额': '每个端点每自然日“配额内成功”的默认上限；端点可在名册策略单独调阈',
+};
+function 命运Of(k, v) {
+  if (k === '端点日配额' || k === '日配额' || k.indexOf('日配额:') === 0) {
+    const n = Number(v);
+    if (n === 0) return ['配额闸全关', '关闭'];
+    return ['硬阈生效', '开启'];
+  }
+  return ['策略在册', '配额内'];
+}
 async function 刷() {
-  document.getElementById('规').textContent = JSON.stringify(await 投递台.getJSON('/api/签名规'), null, 2);
+  const map = await 投递台.getJSON('/api/签名规');
+  document.getElementById('规').textContent = JSON.stringify(map, null, 2);
+  const tb = document.getElementById('策略表'); tb.innerHTML = '';
+  for (const [k, v] of Object.entries(map)) {
+    const [命运, cls] = 命运Of(k, v);
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + 投递台.安全文本(k) + '</td>' +
+      '<td>' + 投递台.安全文本(中文含义[k] || (k.indexOf('日配额:') === 0 ? '端点级日配额（' + k.split(':')[1] + '）' : '自定义策略')) + '</td>' +
+      '<td><b>' + 投递台.安全文本(v) + '</b></td>' +
+      '<td></td>';
+    tr.children[3].appendChild(投递台.徽章(命运));
+    tb.appendChild(tr);
+  }
 }
 document.getElementById('保存').onclick = async () => {
   try {
     const k = document.getElementById('键').value;
     const v = document.getElementById('值').value;
     await 投递台.postJSON('/api/签名规', {[k]: v});
+    document.getElementById('消息').style.color = 'var(--好)';
     document.getElementById('消息').textContent = '已保存';
     await 刷();
-  } catch (e) { document.getElementById('消息').textContent = e.message; }
+  } catch (e) { document.getElementById('消息').style.color = 'var(--险)'; document.getElementById('消息').textContent = e.message; }
 };
-刷();
+刷().catch(e => { document.getElementById('消息').textContent = e.message; });
 </script>
 
 </body>

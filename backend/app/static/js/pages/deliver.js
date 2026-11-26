@@ -15,6 +15,10 @@ export const STAGE_COPY = {
 
 const FATE_TONE = {
   '待投': 'warn', '投递中': 'info', '待确认': 'warn', '已投递': 'ok', '已作废': 'danger',
+  '成功': 'ok', '失败': 'danger', '重试中': 'warn', '死信': 'danger',
+  '配额内': 'ok', '配额充足': 'ok', '开启': 'ok',
+  '预警': 'warn', '配额预警': 'warn',
+  '超发拦截': 'danger', '配额已满': 'danger', '关闭': 'danger',
 };
 
 export function fateChip(fate) {

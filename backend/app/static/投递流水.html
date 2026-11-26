@@ -25,46 +25,146 @@
   <main class="主区">
     <header class="页头">
       <h1>投递流水</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <p>Webhook 投递控制台 · 配额内正式流水与超配额只读归档两轨互斥 · 非工单客服</p>
     </header>
 
 <section class="卷">
-  <label>事件号</label><input id="事件号" placeholder="EVT-..."/>
-  <label><input type="checkbox" id="强制失败"/> 强制失败（测死信）</label>
-  <p class="消息" id="消息"></p>
-  <button class="按钮" type="button" id="投递钮">签名投递一次</button>
-  <button class="按钮 次" type="button" id="批量钮">批量重试待投</button>
+  <div class="配额行输入">
+    <label>事件号</label><input id="事件号" placeholder="EVT-..."/>
+    <label><input type="checkbox" id="强制失败" style="width:auto;max-width:none"/> 强制失败（测死信）</label>
+    <button class="按钮" type="button" id="投递钮">签名投递一次</button>
+    <button class="按钮 次" type="button" id="批量钮">批量重试待投</button>
+  </div>
+  <p class="消息" id="消息" role="alert"></p>
+  <div id="结果卡"></div>
 </section>
-<section class="卷"><div class="表绕"><table><thead><tr><th>尝试号</th><th>事件号</th><th>端点键</th><th>签名摘要</th><th>状态</th><th>响应码</th></tr></thead><tbody id="表"></tbody></table></div></section>
+
+<section class="卷">
+  <h3 style="margin-top:0">端点日配额余量与中文闸口</h3>
+  <div class="配额条" id="配额条"><span class="说明">加载中…</span></div>
+</section>
+
+<section class="卷">
+  <h3 style="margin-top:0">正式投递流水（只读「配额内」读集）</h3>
+  <div class="表绕"><table>
+    <thead><tr><th>尝试号</th><th>事件号</th><th>端点键</th><th>签名摘要</th><th>状态</th><th>轨道</th><th>响应码</th><th>说明</th><th>投递时</th></tr></thead>
+    <tbody id="表"></tbody>
+  </table></div>
+</section>
+
+<section class="卷">
+  <h3 style="margin-top:0">超发归档轨 <span class="只读标">只读 · 与正式流水读集互斥</span></h3>
+  <p class="说明">满额后的请求不写正式成功行，统一双写至此，保留中文超发拒因，供端点名册对账与事后核账。</p>
+  <div class="表绕"><table>
+    <thead><tr><th>归档号</th><th>事件号</th><th>端点键</th><th>日</th><th>日配额</th><th>已用</th><th>状态</th><th>超发拒因</th><th>时刻</th></tr></thead>
+    <tbody id="超发表"></tbody>
+  </table></div>
+</section>
 
   </main>
 
 <script>
-async function 刷表() {
-  const rows = await 投递台.getJSON('/api/投递');
-  const tb = document.getElementById('表'); tb.innerHTML='';
-  for (const r of rows) {
-    const tr = 投递台.行('<td>'+投递台.安全文本(r.尝试号)+'</td><td>'+投递台.安全文本(r.事件号)+'</td><td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.签名摘要)+'</td><td></td><td>'+投递台.安全文本(r.响应码)+'</td>');
-    tr.children[4].appendChild(投递台.徽章(r.状态)); tb.appendChild(tr);
+function 闸类(闸){ return 闸 === '关闭' ? '关' : (闸 === '预警' ? '警' : '开'); }
+
+async function 刷配额() {
+  const rows = await 投递台.getJSON('/api/配额');
+  const box = document.getElementById('配额条'); box.innerHTML = '';
+  for (const q of rows) {
+    const card = document.createElement('div'); card.className = 'q卡';
+    const low = q.已满 ? 'var(--险)' : (q.闸口 === '预警' ? 'var(--警)' : 'var(--好)');
+    card.innerHTML =
+      '<small>' + 投递台.安全文本(q.端点键) + ' · 日配额余量</small>' +
+      '<b style="color:' + low + '">' + 投递台.安全文本(q.日配额余量) + ' / ' + 投递台.安全文本(q.日配额) + '</b>' +
+      '<div style="margin:4px 0"></div>';
+    const badge = 投递台.徽章(q.命运 || q.闸口);
+    card.appendChild(badge);
+    const line = document.createElement('div');
+    line.className = '闸口文案 ' + 闸类(q.闸口);
+    line.style.marginTop = '6px';
+    line.textContent = q.闸口文案;
+    card.appendChild(line);
+    box.appendChild(card);
   }
 }
+
+async function 刷表() {
+  const rows = await 投递台.getJSON('/api/投递');
+  const tb = document.getElementById('表'); tb.innerHTML = '';
+  for (const r of rows) {
+    const tr = document.createElement('tr');
+    const tdTry = document.createElement('td'); tdTry.textContent = r.尝试号 || ''; tr.appendChild(tdTry);
+    const tdEv = document.createElement('td');
+    tdEv.innerHTML = '<a class="链" href="/事件详情.html?事件号=' + encodeURIComponent(r.事件号) + '">' + 投递台.安全文本(r.事件号) + '</a>';
+    tr.appendChild(tdEv);
+    const tdEp = document.createElement('td'); tdEp.textContent = r.端点键 || ''; tr.appendChild(tdEp);
+    const tdSig = document.createElement('td'); tdSig.textContent = r.签名摘要 || ''; tr.appendChild(tdSig);
+    const tdSt = document.createElement('td'); tdSt.appendChild(投递台.徽章(r.状态)); tr.appendChild(tdSt);
+    const tdTrack = document.createElement('td'); tdTrack.appendChild(投递台.徽章(r.轨道 || '配额内')); tr.appendChild(tdTrack);
+    const tdCode = document.createElement('td'); tdCode.textContent = r.响应码 == null ? '' : r.响应码; tr.appendChild(tdCode);
+    const tdMsg = document.createElement('td'); tdMsg.textContent = r.说明 || ''; tr.appendChild(tdMsg);
+    const tdTime = document.createElement('td'); tdTime.textContent = r.投递时 || ''; tr.appendChild(tdTime);
+    tb.appendChild(tr);
+  }
+}
+
+async function 刷超发() {
+  const rows = await 投递台.getJSON('/api/超发归档');
+  const tb = document.getElementById('超发表'); tb.innerHTML = '';
+  if (!rows.length) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td colspan="9" class="说明">暂无超发归档；配额未满或闸口未拒超发。</td>';
+    tb.appendChild(tr); return;
+  }
+  for (const r of rows) {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + 投递台.安全文本(r.归档号) + '</td>' +
+      '<td><a class="链" href="/事件详情.html?事件号=' + encodeURIComponent(r.事件号) + '">' + 投递台.安全文本(r.事件号) + '</a></td>' +
+      '<td>' + 投递台.安全文本(r.端点键) + '</td>' +
+      '<td>' + 投递台.安全文本(r.日) + '</td>' +
+      '<td>' + 投递台.安全文本(r.日配额) + '</td>' +
+      '<td>' + 投递台.安全文本(r.已用) + '</td>' +
+      '<td></td>' +
+      '<td>' + 投递台.安全文本(r.拒因) + '</td>' +
+      '<td>' + 投递台.安全文本(r.时刻) + '</td>';
+    tr.children[6].appendChild(投递台.徽章(r.状态 || '超发拦截'));
+    tb.appendChild(tr);
+  }
+}
+
+async function 全刷() {
+  await Promise.all([刷配额(), 刷表(), 刷超发()]);
+}
+
 document.getElementById('投递钮').onclick = async () => {
   const 消息 = document.getElementById('消息');
+  const 卡 = document.getElementById('结果卡');
+  消息.textContent = ''; 卡.innerHTML = '';
   try {
     const rep = await 投递台.postJSON('/api/投递', {
       事件号: document.getElementById('事件号').value,
       强制失败: document.getElementById('强制失败').checked,
     });
-    消息.textContent = JSON.stringify(rep);
-    await 刷表();
-  } catch (e) { 消息.textContent = e.message; }
+    消息.style.color = 'var(--好)';
+    消息.textContent = '投递结果：' + rep.状态 + (rep.事件状态 ? ' / 事件' + rep.事件状态 : '');
+    if (rep.配额 && rep.配额.闸口文案) {
+      卡.innerHTML = '<div class="闸口文案 ' + 闸类(rep.配额.闸口) + '">' + 投递台.安全文本(rep.配额.闸口文案) + '</div>';
+    }
+    await 全刷();
+  } catch (e) {
+    消息.style.color = 'var(--险)';
+    消息.textContent = e.message;  // 中文超发拒因直接可读
+    卡.innerHTML = '<div class="闸口文案 关">' + 投递台.安全文本(e.message) + '</div>';
+    await 全刷();
+  }
 };
 document.getElementById('批量钮').onclick = async () => {
   const rep = await 投递台.postJSON('/api/投递/批量重试', {});
-  document.getElementById('消息').textContent = '批量 '+rep.条数;
-  await 刷表();
+  document.getElementById('消息').style.color = 'var(--墨)';
+  document.getElementById('消息').textContent = '批量处理 ' + rep.条数 + ' 条（配额拒绝项含中文原因）';
+  await 全刷();
 };
-刷表();
+全刷().catch(e => { document.getElementById('消息').textContent = e.message; });
 </script>
 
 </body>

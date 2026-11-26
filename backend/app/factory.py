@@ -4,7 +4,7 @@ from pathlib import Path
 from flask import Flask, jsonify, redirect, request, send_from_directory
 
 from app import seed
-from app.services import 会话, 入队, 投递, 死信, 重试, 互证, 端点, 夹具, 说明, 签名目录
+from app.services import 会话, 入队, 投递, 死信, 重试, 互证, 端点, 夹具, 说明, 签名目录, 配额
 
 _STATIC = Path(__file__).resolve().parent / "static"
 
@@ -98,8 +98,49 @@ def create_app() -> Flask:
         body = request.get_json(force=True, silent=True) or {}
         try:
             return jsonify(投递.投递一次(body["事件号"], bool(body.get("强制失败"))))
+        except 配额.配额已满 as e:
+            # 满额硬闸：400 兼容既有 ValueError 口径，附带配额余量/拒因/锁键供页面与脚本读取。
+            return jsonify(e.响应体()), 400
         except (KeyError, ValueError) as e:
             return jsonify({"错误": str(e)}), 400
+
+    @app.get("/api/配额")
+    def api_配额列表():
+        return jsonify(配额.全部配额视图())
+
+    @app.get("/api/配额/<ep>")
+    def api_配额一条(ep):
+        return jsonify(配额.配额视图(ep))
+
+    @app.post("/api/配额")
+    def api_配额设置_别名():
+        body = request.get_json(force=True, silent=True) or {}
+        try:
+            n = body.get("日配额", body.get("日配额上限", body.get("配额", body.get("阈值"))))
+            return jsonify(端点.设配额(body["端点键"], int(n)))
+        except (KeyError, TypeError, ValueError) as e:
+            return jsonify({"错误": f"配额设置失败：{e}"}), 400
+
+    @app.post("/api/端点/配额")
+    def api_端点配额():
+        body = request.get_json(force=True, silent=True) or {}
+        try:
+            n = body.get("日配额", body.get("日配额上限", body.get("配额", body.get("阈值"))))
+            return jsonify(端点.设配额(body["端点键"], int(n)))
+        except (KeyError, TypeError, ValueError) as e:
+            return jsonify({"错误": f"配额设置失败：{e}"}), 400
+
+    @app.get("/api/端点/配额对账")
+    def api_端点配额对账():
+        ep = request.args.get("端点键")
+        try:
+            return jsonify(端点.配额对账(ep) if ep else 端点.配额对账())
+        except ValueError as e:
+            return jsonify({"错误": str(e)}), 404
+
+    @app.get("/api/超发归档")
+    def api_超发归档():
+        return jsonify(签名目录.超发归档列表(request.args.get("端点键")))
 
     @app.post("/api/投递/批量重试")
     def api_批量重试():

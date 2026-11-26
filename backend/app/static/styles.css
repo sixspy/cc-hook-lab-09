@@ -119,6 +119,30 @@
   .指标 .卡 b { display: block; font-size: 1.4rem; color: var(--靛); }
   .说明 { font-size: 13px; line-height: 1.55; opacity: 0.9; }
   .消息 { color: var(--险); font-size: 13px; min-height: 1.2em; }
+  .徽章.成功, .徽章.配额内 { background: #d1fae5; color: var(--好); }
+  .徽章.失败 { background: #fee2e2; color: var(--险); }
+  .徽章.超发拦截, .徽章.配额已满, .徽章.关闭 { background: #fecaca; color: #7f1d1d; }
+  .徽章.预警, .徽章.将尽 { background: #fde68a; color: #92400e; }
+  .徽章.开启, .徽章.充足 { background: #d1fae5; color: var(--好); }
+  .配额条 { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 10px; margin: 10px 0; }
+  .配额条 .q卡 { background:#fff; border:1px solid var(--边); border-radius:8px; padding:10px 12px; }
+  .配额条 .q卡 small { color: var(--靛); opacity:.8; }
+  .配额条 .q卡 b { display:block; font-size:1.25rem; color: var(--靛); margin-top:2px; }
+  .闸口文案 { border-left:4px solid var(--靛浅); background:#eef4fb; padding:8px 12px; border-radius:6px; font-size:13px; margin:8px 0; }
+  .闸口文案.关 { border-color: var(--险); background:#fdecec; color:#7f1d1d; }
+  .闸口文案.警 { border-color: var(--警); background:#fdf3e0; color:#92400e; }
+  .闸口文案.开 { border-color: var(--好); background:#e9f7ef; color:#14532d; }
+  .卡列 { display:grid; grid-template-columns: repeat(auto-fill,minmax(280px,1fr)); gap:12px; }
+  .事卡 { background:#fff; border:1px solid var(--边); border-radius:10px; padding:12px 14px; }
+  .事卡 h4 { margin:0 0 6px; color:var(--靛); font-size:15px; display:flex; justify-content:space-between; gap:8px; align-items:center; }
+  .事卡 p { margin:4px 0; font-size:13px; }
+  .只读标 { font-size:12px; color:#7f1d1d; background:#fee2e2; border-radius:6px; padding:2px 8px; }
+  a.链 { color: var(--靛浅); text-decoration: underline; }
+  .同票-是 { color: var(--好); font-weight:700; }
+  .同票-否 { color: var(--险); font-weight:700; }
+  .配额行输入 { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .配额行输入 input { max-width: 120px; }
+  .配额行输入 label { margin:0; }
   @media (max-width: 720px) {
     .登录壳 { grid-template-columns: 1fr; }
     .登录左 { padding: 28px; }

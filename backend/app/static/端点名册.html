@@ -24,34 +24,110 @@
   </header>
   <main class="主区">
     <header class="页头">
-      <h1>端点名册</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <h1>端点名册策略</h1>
+      <p>Webhook 投递控制台 · 端点日配额硬阈 hook-09 · 名册联查流水与超发归档，账实同源</p>
     </header>
 
 <section class="卷">
-  <label>端点键</label><input id="端点键" placeholder="ep-new"/>
-  <label>名称</label><input id="名称"/>
-  <label>回调URL</label><input id="回调URL" placeholder="https://..."/>
-  <label>密钥版本</label><input id="密钥版本" value="v1"/>
+  <h3 style="margin-top:0">登记端点</h3>
+  <div class="配额行输入">
+    <label>端点键</label><input id="端点键" placeholder="ep-new"/>
+    <label>名称</label><input id="名称"/>
+    <label>回调URL</label><input id="回调URL" placeholder="https://..."/>
+    <label>密钥版本</label><input id="密钥版本" value="v1"/>
+    <button class="按钮" type="button" id="登记">登记端点</button>
+  </div>
   <p class="消息" id="消息"></p>
-  <button class="按钮" type="button" id="登记">登记端点</button>
 </section>
-<section class="卷"><div class="表绕"><table><thead><tr><th>端点键</th><th>名称</th><th>回调URL</th><th>密钥版本</th><th>启用</th><th>操作</th></tr></thead><tbody id="表"></tbody></table></div></section>
+
+<section class="卷">
+  <h3 style="margin-top:0">日配额对账（名册 × 正式流水 × 只读超发归档）</h3>
+  <div id="对账条" class="闸口文案 开">正在核账…</div>
+  <div class="表绕"><table>
+    <thead><tr>
+      <th>端点键</th><th>名称</th><th>启用</th>
+      <th>日配额</th><th>今日配额内成功</th><th>日配额余量</th><th>超发</th>
+      <th>中文闸口 / 命运</th><th>同票</th><th>配额策略</th><th>启用操作</th>
+    </tr></thead>
+    <tbody id="表"></tbody>
+  </table></div>
+</section>
 
   </main>
 
 <script>
+function 闸类(闸) {
+  if (闸 === '关闭') return '关';
+  if (闸 === '预警') return '警';
+  return '开';
+}
 async function 刷表() {
   const rows = await 投递台.getJSON('/api/端点');
-  const tb = document.getElementById('表'); tb.innerHTML='';
+  let 同票数 = 0;
+  const tb = document.getElementById('表'); tb.innerHTML = '';
   for (const r of rows) {
-    const tr = 投递台.行('<td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.名称)+'</td><td>'+投递台.安全文本(r.回调URL)+'</td><td>'+投递台.安全文本(r.密钥版本)+'</td><td></td><td></td>');
-    tr.children[4].appendChild(投递台.徽章(r.启用 ? '启用' : '停用'));
-    const btn = document.createElement('button'); btn.className='按钮 次'; btn.type='button';
+    const tr = document.createElement('tr');
+
+    const tdKey = document.createElement('td');
+    tdKey.innerHTML = '<a class="链" href="/事件队列.html?端点键=' + encodeURIComponent(r.端点键) + '">' + 投递台.安全文本(r.端点键) + '</a>';
+    tr.appendChild(tdKey);
+
+    const tdName = document.createElement('td'); tdName.textContent = r.名称 || ''; tr.appendChild(tdName);
+
+    const tdOn = document.createElement('td'); tdOn.appendChild(投递台.徽章(r.启用 ? '启用' : '停用')); tr.appendChild(tdOn);
+
+    const tdLimit = document.createElement('td'); tdLimit.textContent = r.日配额; tr.appendChild(tdLimit);
+    const tdUsed = document.createElement('td'); tdUsed.textContent = r.配额内成功; tr.appendChild(tdUsed);
+    const tdLeft = document.createElement('td');
+    tdLeft.innerHTML = '<b>' + 投递台.安全文本(r.日配额余量) + '</b>'; tr.appendChild(tdLeft);
+    const tdOver = document.createElement('td');
+    tdOver.innerHTML = r.超发数 > 0 ? '<span class="徽章 超发拦截">超发 ' + r.超发数 + '</span>' : '0';
+    tr.appendChild(tdOver);
+
+    const tdGate = document.createElement('td');
+    const badge = 投递台.徽章(r.命运 || r.闸口);
+    tdGate.appendChild(badge);
+    const gateLine = document.createElement('div');
+    gateLine.className = '闸口文案 ' + 闸类(r.闸口);
+    gateLine.style.margin = '4px 0 0';
+    gateLine.textContent = r.闸口文案 || '';
+    tdGate.appendChild(gateLine);
+    tr.appendChild(tdGate);
+
+    const tdTie = document.createElement('td');
+    // /api/端点 已联查同票口径；这里用恒等式在前端复核一次
+    const tie = (Number(r.日配额余量) === Math.max(0, Number(r.日配额) - Number(r.配额内成功)));
+    if (tie) 同票数++;
+    tdTie.innerHTML = tie ? '<span class="同票-是">同票</span>' : '<span class="同票-否">撕裂</span>';
+    tr.appendChild(tdTie);
+
+    const tdQuota = document.createElement('td');
+    const wrap = document.createElement('div'); wrap.className = '配额行输入';
+    const inp = document.createElement('input'); inp.type = 'number'; inp.min = '0'; inp.value = r.日配额;
+    inp.setAttribute('aria-label', '日配额-' + r.端点键);
+    const qbtn = document.createElement('button'); qbtn.className = '按钮 次'; qbtn.type = 'button'; qbtn.textContent = '调阈';
+    qbtn.onclick = async () => {
+      qbtn.disabled = true;
+      try {
+        await 投递台.postJSON('/api/端点/配额', { 端点键: r.端点键, 日配额: Number(inp.value) });
+        document.getElementById('消息').textContent = r.端点键 + ' 日配额已调为 ' + inp.value;
+        await 刷表();
+      } catch (e) { document.getElementById('消息').textContent = e.message; qbtn.disabled = false; }
+    };
+    wrap.appendChild(inp); wrap.appendChild(qbtn); tdQuota.appendChild(wrap); tr.appendChild(tdQuota);
+
+    const tdOp = document.createElement('td');
+    const btn = document.createElement('button'); btn.className = '按钮 次'; btn.type = 'button';
     btn.textContent = r.启用 ? '停用' : '启用';
-    btn.onclick = async () => { await 投递台.postJSON('/api/端点/启用', {端点键:r.端点键, 启用: !r.启用}); await 刷表(); };
-    tr.children[5].appendChild(btn); tb.appendChild(tr);
+    btn.onclick = async () => { await 投递台.postJSON('/api/端点/启用', { 端点键: r.端点键, 启用: !r.启用 }); await 刷表(); };
+    tdOp.appendChild(btn); tr.appendChild(tdOp);
+
+    tb.appendChild(tr);
   }
+  const bar = document.getElementById('对账条');
+  bar.className = '闸口文案 ' + (同票数 === rows.length ? '开' : '关');
+  bar.textContent = '核账实同源：' + rows.length + ' 个端点，' + 同票数 +
+    ' 个满足「日配额余量 = 日配额 − 今日配额内成功」；超发只在只读归档轨，名册不把超发算成配额内。';
 }
 document.getElementById('登记').onclick = async () => {
   try {
@@ -65,7 +141,7 @@ document.getElementById('登记').onclick = async () => {
     await 刷表();
   } catch (e) { document.getElementById('消息').textContent = e.message; }
 };
-刷表();
+刷表().catch(e => { document.getElementById('对账条').textContent = e.message; });
 </script>
 
 </body>

@@ -24,44 +24,75 @@
   </header>
   <main class="主区">
     <header class="页头">
-      <h1>死信匣</h1>
-      <p>Webhook 投递控制台 · 应用开发全栈 · 非工单客服</p>
+      <h1>死信匣卡片</h1>
+      <p>Webhook 投递控制台 · 重试耗尽入匣；撞日配额重投会回补卡片并写明中文拒因 · 非工单客服</p>
     </header>
 
 <section class="卷">
-  <label>事件号</label><input id="事件号"/>
-  <p class="消息" id="消息"></p>
-  <button class="按钮" type="button" id="重投钮">死信重投</button>
-  <button class="按钮 次" type="button" id="作废钮">作废</button>
+  <div class="配额行输入">
+    <label>事件号</label><input id="事件号"/>
+    <button class="按钮" type="button" id="重投钮">死信重投</button>
+    <button class="按钮 次" type="button" id="作废钮">作废</button>
+  </div>
+  <p class="消息" id="消息" role="alert"></p>
 </section>
-<section class="卷"><div class="表绕"><table><thead><tr><th>死信号</th><th>事件号</th><th>端点键</th><th>失败次数</th><th>末次原因</th><th>状态</th></tr></thead><tbody id="表"></tbody></table></div></section>
+
+<section class="卷">
+  <h3 style="margin-top:0">匣中卡片</h3>
+  <div class="卡列" id="卡片列"><span class="说明">加载中…</span></div>
+</section>
+
+<section class="卷"><h3 style="margin-top:0">死信台账</h3><div class="表绕"><table><thead><tr><th>死信号</th><th>事件号</th><th>端点键</th><th>失败次数</th><th>末次原因</th><th>状态</th></tr></thead><tbody id="表"></tbody></table></div></section>
 
   </main>
 
 <script>
-async function 刷表() {
-  const rows = await 投递台.getJSON('/api/死信');
-  const tb = document.getElementById('表'); tb.innerHTML='';
-  for (const r of rows) {
-    const tr = 投递台.行('<td>'+投递台.安全文本(r.死信号)+'</td><td>'+投递台.安全文本(r.事件号)+'</td><td>'+投递台.安全文本(r.端点键)+'</td><td>'+投递台.安全文本(r.失败次数)+'</td><td>'+投递台.安全文本(r.末次原因)+'</td><td></td>');
-    tr.children[5].appendChild(投递台.徽章(r.状态)); tb.appendChild(tr);
+async function 动作(url, payload) {
+  const 消息 = document.getElementById('消息');
+  try {
+    const rep = await 投递台.postJSON(url, payload);
+    消息.style.color = 'var(--好)';
+    消息.textContent = '已处理：' + (rep.状态 || rep.事件状态 || JSON.stringify(rep).slice(0, 80));
+  } catch (e) {
+    消息.style.color = 'var(--险)';
+    消息.textContent = e.message;
+  } finally {
+    await 刷表();
   }
 }
-document.getElementById('重投钮').onclick = async () => {
-  try {
-    const rep = await 投递台.postJSON('/api/死信/重投', {事件号: document.getElementById('事件号').value});
-    document.getElementById('消息').textContent = JSON.stringify(rep);
-    await 刷表();
-  } catch (e) { document.getElementById('消息').textContent = e.message; }
-};
-document.getElementById('作废钮').onclick = async () => {
-  try {
-    const rep = await 投递台.postJSON('/api/死信/作废', {事件号: document.getElementById('事件号').value});
-    document.getElementById('消息').textContent = JSON.stringify(rep);
-    await 刷表();
-  } catch (e) { document.getElementById('消息').textContent = e.message; }
-};
-刷表();
+async function 刷表() {
+  const rows = await 投递台.getJSON('/api/死信');
+  const tb = document.getElementById('表'); tb.innerHTML = '';
+  const cards = document.getElementById('卡片列'); cards.innerHTML = '';
+  if (!rows.length) cards.innerHTML = '<span class="说明">死信匣为空。</span>';
+  for (const r of rows) {
+    const tr = 投递台.行('<td>' + 投递台.安全文本(r.死信号) + '</td><td><a class="链" href="/事件详情.html?事件号=' + encodeURIComponent(r.事件号) + '">' + 投递台.安全文本(r.事件号) + '</a></td><td>' + 投递台.安全文本(r.端点键) + '</td><td>' + 投递台.安全文本(r.失败次数) + '</td><td>' + 投递台.安全文本(r.末次原因) + '</td><td></td>');
+    tr.children[5].appendChild(投递台.徽章(r.状态)); tb.appendChild(tr);
+
+    const card = document.createElement('article'); card.className = '事卡';
+    const h = document.createElement('h4');
+    const t = document.createElement('span'); t.textContent = r.死信号;
+    h.appendChild(t); h.appendChild(投递台.徽章(r.状态)); card.appendChild(h);
+    const p1 = document.createElement('p');
+    p1.innerHTML = '事件 <a class="链" href="/事件详情.html?事件号=' + encodeURIComponent(r.事件号) + '">' + 投递台.安全文本(r.事件号) + '</a> · ' + 投递台.安全文本(r.端点键);
+    card.appendChild(p1);
+    card.innerHTML += '<p>失败次数：<b>' + 投递台.安全文本(r.失败次数) + '</b></p>';
+    const why = document.createElement('p'); why.textContent = '末次原因：' + (r.末次原因 || ''); card.appendChild(why);
+    const meta = document.createElement('p'); meta.className = '说明'; meta.textContent = '入匣 ' + (r.入匣时 || ''); card.appendChild(meta);
+    if (r.状态 === '待处置') {
+      const row = document.createElement('div'); row.className = '配额行输入'; row.style.marginTop = '8px';
+      const b1 = document.createElement('button'); b1.className = '按钮'; b1.type = 'button'; b1.textContent = '重投';
+      b1.onclick = () => 动作('/api/死信/重投', {事件号: r.事件号});
+      const b2 = document.createElement('button'); b2.className = '按钮 次'; b2.type = 'button'; b2.textContent = '作废';
+      b2.onclick = () => 动作('/api/死信/作废', {事件号: r.事件号});
+      row.appendChild(b1); row.appendChild(b2); card.appendChild(row);
+    }
+    cards.appendChild(card);
+  }
+}
+document.getElementById('重投钮').onclick = () => 动作('/api/死信/重投', {事件号: document.getElementById('事件号').value});
+document.getElementById('作废钮').onclick = () => 动作('/api/死信/作废', {事件号: document.getElementById('事件号').value});
+刷表().catch(e => { document.getElementById('卡片列').textContent = e.message; });
 </script>
 
 </body>

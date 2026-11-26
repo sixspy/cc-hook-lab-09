@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS 投递端点 (
   回调URL TEXT NOT NULL,
   密钥版本 TEXT NOT NULL DEFAULT 'v1',
   启用 INTEGER NOT NULL DEFAULT 1,
+  日配额 INTEGER,
   说明 TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS 事件 (
@@ -35,11 +36,25 @@ CREATE TABLE IF NOT EXISTS 投递尝试 (
   端点键 TEXT NOT NULL,
   签名摘要 TEXT NOT NULL DEFAULT '',
   状态 TEXT NOT NULL DEFAULT '失败',
+  轨道 TEXT NOT NULL DEFAULT '配额内',
   响应码 INTEGER NOT NULL DEFAULT 0,
   说明 TEXT NOT NULL DEFAULT '',
   投递时 TEXT NOT NULL,
   FOREIGN KEY (事件号) REFERENCES 事件(事件号),
   FOREIGN KEY (端点键) REFERENCES 投递端点(端点键)
+);
+CREATE TABLE IF NOT EXISTS 超发归档 (
+  归档号 TEXT PRIMARY KEY,
+  尝试号 TEXT NOT NULL,
+  事件号 TEXT NOT NULL,
+  端点键 TEXT NOT NULL,
+  日 TEXT NOT NULL,
+  日配额 INTEGER NOT NULL,
+  已用 INTEGER NOT NULL,
+  状态 TEXT NOT NULL DEFAULT '超发拦截',
+  拒因 TEXT NOT NULL DEFAULT '',
+  签名摘要 TEXT NOT NULL DEFAULT '',
+  时刻 TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS 死信 (
   死信号 TEXT PRIMARY KEY,
@@ -75,9 +90,25 @@ def 此刻() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _列名(conn, 表: str) -> set[str]:
+    return {r["name"] for r in conn.execute(f"PRAGMA table_info({表})").fetchall()}
+
+
+def 迁移旧库(conn) -> None:
+    """对已存在的旧版投递台库做加法式迁移（幂等）。"""
+    ep_cols = _列名(conn, "投递端点")
+    if ep_cols and "日配额" not in ep_cols:
+        conn.execute("ALTER TABLE 投递端点 ADD COLUMN 日配额 INTEGER")
+    at_cols = _列名(conn, "投递尝试")
+    if at_cols and "轨道" not in at_cols:
+        conn.execute("ALTER TABLE 投递尝试 ADD COLUMN 轨道 TEXT NOT NULL DEFAULT '配额内'")
+    conn.commit()
+
+
 def 初始化库() -> None:
     conn = 连接()
     conn.executescript(建表)
+    迁移旧库(conn)
     if conn.execute("SELECT COUNT(*) AS c FROM 用户").fetchone()["c"] == 0:
         conn.execute("INSERT INTO 用户(账号,密码哈希,角色) VALUES (?,?,?)", ("admin", "123456", "管理员"))
     if conn.execute("SELECT COUNT(*) AS c FROM 签名规").fetchone()["c"] == 0:
@@ -87,8 +118,14 @@ def 初始化库() -> None:
             "主链": "端点登记→事件入队→签名投递→失败重试与死信→投递账互证",
             "签名算法": "HMAC-SHA256",
             "超时秒": "5",
+            "端点日配额": "100000",
         }.items():
             conn.execute("INSERT INTO 签名规(键,值) VALUES (?,?)", (k, v))
+    # 旧库也补齐全局日配额策略键（不覆盖已调值），供签名规列表与配额闸同源读取。
+    conn.execute(
+        "INSERT INTO 签名规(键,值) VALUES ('端点日配额','100000') "
+        "ON CONFLICT(键) DO NOTHING"
+    )
     if conn.execute("SELECT COUNT(*) AS c FROM 投递端点").fetchone()["c"] == 0:
         for row in [
             ("ep-billing", "账单回调", "https://example.local/hooks/billing", "v1", 1, "账务"),
